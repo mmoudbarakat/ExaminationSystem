@@ -1,74 +1,120 @@
 ﻿using ExaminationSystem.Data;
-using ExaminationSystem.Dtos;
 using ExaminationSystem.Models;
+using ExaminationSystem.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design.Internal;
 
 namespace ExaminationSystem.Controllers
 {
     public class QuestionController : Controller
     {
-        private readonly Context _context;
-        public QuestionController(Context context)
+        GeneralRepository<Question> _questionRepository;
+
+        public QuestionController()
         {
-            context = _context;
+            _questionRepository = new GeneralRepository<Question>();
         }
 
-
-
-        [HttpPost]
-        public async Task<IActionResult> Add([FromBody] QuestionDto questionDto)
+        // GET: /Question
+        public async Task<IActionResult> Index()
         {
-            var question = new Question
+            var questions = await _questionRepository.GetAllAsync();
+            return View(questions);
+        }
+
+        // GET: /Question/Details/5
+        public async Task<IActionResult> Details(int id)
+        {
+            var question = await _questionRepository.GetByIdAsync(id);
+            if (question == null)
             {
-                Header = questionDto.Header,
-                Choices = questionDto.Choices.Select(ChoiceDto => new Choice
-                {
-                    text = ChoiceDto.text
-                }).ToList(),
-            };
-
-
-            await _context.Questions.AddAsync(question);
-            await _context.SaveChangesAsync();
-            return Ok(question);
+                return NotFound();
+            }
+            return View(question);
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Update(int id, [FromBody] QuestionDto questionDto)
-        {
-            var question = await _context.Questions.FirstOrDefaultAsync(x => x.Id == id);
-            if (question is null)
-                return NotFound("Question not found!");
-            question.Header = questionDto.Header;
-
-
-            await _context.SaveChangesAsync();
-
-            return Ok(question);
-        }
-
-        [HttpDelete]
-        public async Task<IActionResult> Delete(int id)
-        {
-            var question = await _context.Questions.FirstOrDefaultAsync(q => q.Id == id);
-            var choice = await _context.Choices.FirstOrDefaultAsync(c => c.Id == id);
-
-            if (question is null)
-                return NotFound("Could not delete question!");
-            question.Deleted = true;
-            choice.Deleted = true;
-
-            await _context.SaveChangesAsync();
-            
-
-            return Ok("Question Deleted.");
-        }
-
-
-        public IActionResult Index()
+        // GET: /Question/Create
+        public IActionResult Create()
         {
             return View();
+        }
+
+        // POST: /Question/Create
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Create(Question question)
+        {
+            if (ModelState.IsValid)
+            {
+                await _questionRepository.AddAsync(question);
+                return RedirectToAction(nameof(Index));
+            }
+            return View(question);
+        }
+
+        // GET: /Question/Edit/5
+        public async Task<IActionResult> Edit(int id)
+        {
+            var question = await _questionRepository.GetByIdAsync(id);
+            if (question == null)
+            {
+                return NotFound();
+            }
+            return View(question);
+        }
+
+        // POST: /Question/Edit/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Edit(int id, Question question)
+        {
+            if (id != question.Id)
+            {
+                return BadRequest();
+            }
+
+            if (ModelState.IsValid)
+            {
+                try
+                {
+                    await _questionRepository.UpdateAsync(question);
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    if (!await _questionRepository.ExistsAsync(id))
+                    {
+                        return NotFound();
+                    }
+                    throw;
+                }
+                return RedirectToAction(nameof(Index));
+            }
+            return View(question);
+        }
+
+        // GET: /Question/Delete/5
+        public async Task<IActionResult> Delete(int id)
+        {
+            var question = await _questionRepository.GetByIdAsync(id);
+            if (question == null)
+            {
+                return NotFound();
+            }
+            return View(question);
+        }
+
+        // POST: /Question/Delete/5
+        [HttpPost, ActionName("Delete")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteConfirmed(int id)
+        {
+            var question = await _questionRepository.GetByIdAsync(id);
+            if (question != null)
+            {
+                await _questionRepository.DeleteAsync(question);
+            }
+            return RedirectToAction(nameof(Index));
         }
     }
 }

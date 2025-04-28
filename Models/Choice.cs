@@ -1,13 +1,12 @@
 ﻿namespace ExaminationSystem.Models
 {
-    public class Choice
+    public class Choice : BaseModel
     {
-        public int Id { get; set; }
         public string text { get; set; }
+        public bool IsCorrect { get; set; }
         public int QuestionId{ get; set; }
-        public bool Deleted { get; set; }
         public ICollection <Question> Questions { get; set; }
-
+        public ICollection<StudentAnswer> StudentAnswers { get; set; }
 
     }
 }

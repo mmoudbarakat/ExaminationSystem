@@ -1,12 +1,17 @@
-﻿namespace ExaminationSystem.Models
-{
-    public class Course
-    {
-        public int Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
-        public int Hour { get; set; }
-        public bool Deleted { get; set; }
+namespace ExaminationSystem.Models
+{
+    public class Course : BaseModel
+    {
+        public string Description { get; set; }
+        public int Hours { get; set; }
+        [InverseProperty("PrerequesitCourse")]
+        public List<Prerequesit> Prerequesits { get; set; }
+        [InverseProperty("MainCourse")]
+        public List <Prerequesit> MainCourse { get; set; }
+        public ICollection<Exam> Exams { get; set; }
+        public ICollection<Question> Questions { get; set; }
+        public ICollection<StudentAnswer> StudentAnswers { get; set; }
     }
 }
