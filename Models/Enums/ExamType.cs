@@ -3,7 +3,6 @@
     public enum ExamType
     {
         Quiz,
-        Final,
-        Midterm
+        Final
     }
 }

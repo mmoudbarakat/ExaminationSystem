@@ -1,120 +1,134 @@
-﻿using ExaminationSystem.Data;
+﻿using System.Security.Claims;
+using ExaminationSystem.Data;
+using ExaminationSystem.Dtos;
 using ExaminationSystem.Models;
-using ExaminationSystem.Repositories;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Design.Internal;
 
 namespace ExaminationSystem.Controllers
 {
-    public class QuestionController : Controller
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize(Roles = "Instructor")]
+    public class QuestionController : ControllerBase
     {
-        GeneralRepository<Question> _questionRepository;
+        private readonly Context _context;
 
-        public QuestionController()
+        public QuestionController(Context context)
         {
-            _questionRepository = new GeneralRepository<Question>();
+            _context = context;
         }
 
-        // GET: /Question
-        public async Task<IActionResult> Index()
+        private int InstructorId =>
+            int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+        [HttpGet]
+        public async Task<ActionResult<List<QuestionDto>>> GetMyQuestions([FromQuery] int? courseId)
         {
-            var questions = await _questionRepository.GetAllAsync();
-            return View(questions);
+            var query = _context.Questions
+                .Where(q => q.InstructorId == InstructorId && !q.IsDeleted)
+                .Include(q => q.Choices.Where(c => !c.IsDeleted))
+                .AsQueryable();
+
+            if (courseId.HasValue)
+                query = query.Where(q => q.CourseId == courseId.Value);
+
+            var questions = await query.ToListAsync();
+            return Ok(questions.Select(MapQuestionDto).ToList());
         }
 
-        // GET: /Question/Details/5
-        public async Task<IActionResult> Details(int id)
+        [HttpGet("{id}")]
+        public async Task<ActionResult<QuestionDto>> GetById(int id)
         {
-            var question = await _questionRepository.GetByIdAsync(id);
-            if (question == null)
-            {
-                return NotFound();
-            }
-            return View(question);
+            var question = await _context.Questions
+                .Include(q => q.Choices.Where(c => !c.IsDeleted))
+                .FirstOrDefaultAsync(q => q.Id == id && q.InstructorId == InstructorId && !q.IsDeleted);
+
+            if (question == null) return NotFound();
+            return Ok(MapQuestionDto(question));
         }
 
-        // GET: /Question/Create
-        public IActionResult Create()
-        {
-            return View();
-        }
-
-        // POST: /Question/Create
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(Question question)
+        public async Task<ActionResult<QuestionDto>> Create(CreateQuestionDto dto)
         {
-            if (ModelState.IsValid)
-            {
-                await _questionRepository.AddAsync(question);
-                return RedirectToAction(nameof(Index));
-            }
-            return View(question);
-        }
+            var course = await _context.Courses
+                .FirstOrDefaultAsync(c => c.Id == dto.CourseId && c.InstructorId == InstructorId && !c.IsDeleted);
 
-        // GET: /Question/Edit/5
-        public async Task<IActionResult> Edit(int id)
-        {
-            var question = await _questionRepository.GetByIdAsync(id);
-            if (question == null)
-            {
-                return NotFound();
-            }
-            return View(question);
-        }
+            if (course == null) return BadRequest("Course not found or not owned by you.");
 
-        // POST: /Question/Edit/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, Question question)
-        {
-            if (id != question.Id)
-            {
-                return BadRequest();
-            }
+            if (dto.Choices.Count < 2)
+                return BadRequest("A question must have at least 2 choices.");
 
-            if (ModelState.IsValid)
+            if (!dto.Choices.Any(c => c.IsCorrect))
+                return BadRequest("At least one choice must be marked as correct.");
+
+            var question = new Question
             {
-                try
+                Header = dto.Header,
+                QuestionLevel = dto.QuestionLevel,
+                CourseId = dto.CourseId,
+                InstructorId = InstructorId,
+                Name = dto.Header,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = InstructorId,
+                Choices = dto.Choices.Select(c => new Choice
                 {
-                    await _questionRepository.UpdateAsync(question);
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    if (!await _questionRepository.ExistsAsync(id))
-                    {
-                        return NotFound();
-                    }
-                    throw;
-                }
-                return RedirectToAction(nameof(Index));
-            }
-            return View(question);
+                    Text = c.Text,
+                    IsCorrect = c.IsCorrect,
+                    Name = c.Text,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = InstructorId
+                }).ToList()
+            };
+
+            _context.Questions.Add(question);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetById), new { id = question.Id }, MapQuestionDto(question));
         }
 
-        // GET: /Question/Delete/5
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, UpdateQuestionDto dto)
+        {
+            var question = await _context.Questions
+                .FirstOrDefaultAsync(q => q.Id == id && q.InstructorId == InstructorId && !q.IsDeleted);
+
+            if (question == null) return NotFound();
+
+            question.Header = dto.Header;
+            question.Name = dto.Header;
+            question.QuestionLevel = dto.QuestionLevel;
+            question.UpdatedBy = InstructorId;
+
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var question = await _questionRepository.GetByIdAsync(id);
-            if (question == null)
-            {
-                return NotFound();
-            }
-            return View(question);
+            var question = await _context.Questions
+                .FirstOrDefaultAsync(q => q.Id == id && q.InstructorId == InstructorId && !q.IsDeleted);
+
+            if (question == null) return NotFound();
+
+            question.IsDeleted = true;
+            question.DeletedBy = InstructorId;
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
 
-        // POST: /Question/Delete/5
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
+        private static QuestionDto MapQuestionDto(Question q) => new()
         {
-            var question = await _questionRepository.GetByIdAsync(id);
-            if (question != null)
-            {
-                await _questionRepository.DeleteAsync(question);
-            }
-            return RedirectToAction(nameof(Index));
-        }
+            Id = q.Id,
+            Header = q.Header,
+            QuestionLevel = q.QuestionLevel,
+            CourseId = q.CourseId,
+            Choices = q.Choices?
+                .Where(c => !c.IsDeleted)
+                .Select(c => new ChoiceDto { Id = c.Id, Text = c.Text, IsCorrect = c.IsCorrect })
+                .ToList() ?? new List<ChoiceDto>()
+        };
     }
 }
